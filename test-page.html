@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConceptVella API Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        h2 { color: #666; margin-top: 30px; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { 
+            background: #d4edda; 
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error { 
+            background: #f8d7da; 
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .token-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .token-display {
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 11px;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ConceptVella API Tester</h1>
+        <p>Test your backend endpoints from the browser!</p>
+
+        <!-- Health Check -->
+        <h2>1️⃣ Health Check</h2>
+        <button onclick="testHealth()">Test Health Endpoint</button>
+        <div id="health-result" class="result" style="display:none;"></div>
+
+        <!-- Login -->
+        <h2>2️⃣ Login (Get Access Token)</h2>
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" placeholder="your-email@example.com">
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Your password">
+        </div>
+        <button onclick="login()">Login</button>
+        <div id="login-result" class="result" style="display:none;"></div>
+
+        <!-- Token Display -->
+        <div id="token-box" class="token-box" style="display:none;">
+            <strong>✅ Access Token (saved for testing):</strong>
+            <div id="token-display" class="token-display"></div>
+        </div>
+
+        <!-- Test Google API -->
+        <h2>3️⃣ Test Google Places API</h2>
+        <button id="test-google-btn" onclick="testGoogle()" disabled>Test Google API</button>
+        <div id="google-result" class="result" style="display:none;"></div>
+
+        <!-- Import Sample POIs -->
+        <h2>4️⃣ Import Sample POIs</h2>
+        <button id="import-btn" onclick="importSample()" disabled>Import 20 Test POIs</button>
+        <div id="import-result" class="result" style="display:none;"></div>
+
+        <!-- Get Stats -->
+        <h2>5️⃣ POI Statistics</h2>
+        <button id="stats-btn" onclick="getStats()" disabled>Get POI Stats</button>
+        <div id="stats-result" class="result" style="display:none;"></div>
+
+        <!-- Get Profile -->
+        <h2>6️⃣ My Profile</h2>
+        <button id="profile-btn" onclick="getProfile()" disabled>Get My Profile</button>
+        <div id="profile-result" class="result" style="display:none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:4000';
+        let accessToken = null;
+
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = 'result ' + (isError ? 'error' : 'success');
+            element.textContent = JSON.stringify(data, null, 2);
+        }
+
+        function enableButtons() {
+            document.getElementById('test-google-btn').disabled = false;
+            document.getElementById('import-btn').disabled = false;
+            document.getElementById('stats-btn').disabled = false;
+            document.getElementById('profile-btn').disabled = false;
+        }
+
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('health-result', data);
+            } catch (error) {
+                showResult('health-result', { error: error.message }, true);
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                showResult('login-result', { error: 'Email and password are required' }, true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    accessToken = data.token;
+                    showResult('login-result', data);
+                    
+                    // Show token
+                    document.getElementById('token-box').style.display = 'block';
+                    document.getElementById('token-display').textContent = accessToken;
+                    
+                    // Enable other buttons
+                    enableButtons();
+                } else {
+                    showResult('login-result', data, true);
+                }
+            } catch (error) {
+                showResult('login-result', { error: error.message }, true);
+            }
+        }
+
+        async function testGoogle() {
+            if (!accessToken) {
+                showResult('google-result', { error: 'Please login first' }, true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/test/google-api`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+                showResult('google-result', data, !response.ok);
+            } catch (error) {
+                showResult('google-result', { error: error.message }, true);
+            }
+        }
+
+        async function importSample() {
+            if (!accessToken) {
+                showResult('import-result', { error: 'Please login first' }, true);
+                return;
+            }
+
+            try {
+                showResult('import-result', { message: 'Importing... this may take 10-30 seconds...' });
+                
+                const response = await fetch(`${API_BASE}/admin/test/import-sample`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+                showResult('import-result', data, !response.ok);
+            } catch (error) {
+                showResult('import-result', { error: error.message }, true);
+            }
+        }
+
+        async function getStats() {
+            if (!accessToken) {
+                showResult('stats-result', { error: 'Please login first' }, true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/pois/stats`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+                showResult('stats-result', data, !response.ok);
+            } catch (error) {
+                showResult('stats-result', { error: error.message }, true);
+            }
+        }
+
+        async function getProfile() {
+            if (!accessToken) {
+                showResult('profile-result', { error: 'Please login first' }, true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const data = await response.json();
+                showResult('profile-result', data, !response.ok);
+            } catch (error) {
+                showResult('profile-result', { error: error.message }, true);
+            }
+        }
+    </script>
+</body>
+</html>
+

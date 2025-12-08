@@ -1,0 +1,40 @@
+### Test API Endpoints
+### Install VS Code Extension: "REST Client" by Huachao Mao
+### Then click "Send Request" above each request
+
+### 1. Health Check
+GET http://localhost:4000/health
+
+### 2. Login (Get Access Token)
+### REPLACE with your actual email and password!
+POST http://localhost:4000/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### 3. Test Google API (Admin only)
+### REPLACE YOUR_TOKEN_HERE with the token from login response!
+GET http://localhost:4000/admin/test/google-api
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 4. Import Sample POIs (Admin only)
+POST http://localhost:4000/admin/test/import-sample
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 5. Get POI Statistics
+GET http://localhost:4000/admin/pois/stats
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 6. Get My Profile
+GET http://localhost:4000/auth/me
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 7. List Challenges
+GET http://localhost:4000/challenges
+
+### 8. List Challenges by Region
+GET http://localhost:4000/challenges?region=VIC
+
