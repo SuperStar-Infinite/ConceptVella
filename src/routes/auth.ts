@@ -391,8 +391,12 @@ router.post("/forgot-password", async (req, res) => {
   }
 
   try {
+    // Get frontend URL from environment or use production URL
+    const frontendUrl = process.env.FRONTEND_URL || 'https://www.conceptvella.com';
+    const redirectUrl = `${frontendUrl}/reset-password`;
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.FRONTEND_URL || 'https://www.conceptvella.com'}/reset-password`,
+      redirectTo: redirectUrl,
     });
 
     if (error) {
@@ -415,7 +419,10 @@ router.post("/forgot-password", async (req, res) => {
 
 /**
  * POST /auth/reset-password
- * Reset password with token
+ * Reset password with token from email link
+ * 
+ * Note: User must first visit the reset link from email, which redirects to frontend.
+ * Frontend extracts the access_token from URL hash, then calls this endpoint with the token.
  */
 router.post("/reset-password", async (req, res) => {
   const { token, password } = req.body;
@@ -433,15 +440,40 @@ router.post("/reset-password", async (req, res) => {
   }
 
   try {
-    // Verify the token and update password
-    const { data, error } = await supabase.auth.updateUser({
+    // Create a Supabase client with the reset token
+    // The token from the email link is an access_token that can be used to update password
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    
+    // Use the token to create an authenticated client
+    const resetClient = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: {
+        persistSession: false,
+      },
+    });
+
+    // Set the session using the token
+    const { data: sessionData, error: sessionError } = await resetClient.auth.setSession({
+      access_token: token,
+      refresh_token: '', // Not needed for password reset
+    });
+
+    if (sessionError || !sessionData.session) {
+      console.error("Session error:", sessionError);
+      return res.status(400).json({
+        error: "Invalid or expired reset token",
+      });
+    }
+
+    // Now update the password using the authenticated session
+    const { data, error } = await resetClient.auth.updateUser({
       password: password,
     });
 
     if (error) {
       console.error("Reset password error:", error);
       return res.status(400).json({
-        error: "Invalid or expired reset token",
+        error: error.message || "Failed to reset password",
       });
     }
 
