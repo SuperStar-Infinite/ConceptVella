@@ -101,14 +101,47 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
 /**
  * POST /auth/register
  * Register new user
+ * Optional fields: username, display_name, bio, location, vehicle_type, avatar_url
  */
 router.post("/register", async (req, res) => {
-  const { email, password, displayName } = req.body;
+  const { 
+    email, 
+    password, 
+    username,
+    display_name,
+    bio,
+    location,
+    vehicle_type,
+    avatar_url
+  } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({
       error: "Email and password are required",
     });
+  }
+
+  // Validate username if provided
+  if (username !== undefined && username !== null && username !== "") {
+    const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({
+        error: "Username must be 3-20 characters and contain only letters, numbers, underscores, or hyphens",
+      });
+    }
+
+    // Check if username is already taken
+    const { data: existingUser } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", username)
+      .single();
+
+    if (existingUser) {
+      return res.status(400).json({
+        error: "Username is already taken",
+      });
+    }
   }
 
   try {
@@ -117,7 +150,7 @@ router.post("/register", async (req, res) => {
       password,
       options: {
         data: {
-          display_name: displayName || email.split("@")[0],
+          display_name: display_name || email.split("@")[0],
         },
       },
     });
@@ -135,12 +168,41 @@ router.post("/register", async (req, res) => {
       });
     }
 
+    // Update profile with additional fields if provided
+    const profileUpdates: any = {};
+    if (username) profileUpdates.username = username;
+    if (display_name) profileUpdates.display_name = display_name;
+    if (bio !== undefined) profileUpdates.bio = bio;
+    if (location !== undefined) profileUpdates.location = location;
+    if (vehicle_type !== undefined) profileUpdates.vehicle_type = vehicle_type;
+    if (avatar_url !== undefined) profileUpdates.avatar_url = avatar_url;
+
+    if (Object.keys(profileUpdates).length > 0) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", data.user.id);
+
+      if (profileError) {
+        console.error("Error updating profile during registration:", profileError);
+        // Don't fail registration if profile update fails, just log it
+      }
+    }
+
+    // Get the updated profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", data.user.id)
+      .single();
+
     return res.json({
       success: true,
       message: "Registration successful",
       user: {
         id: data.user.id,
         email: data.user.email,
+        profile: profile || null,
       },
       // Note: If email confirmation is enabled, session will be null
       token: data.session?.access_token,
