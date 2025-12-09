@@ -182,12 +182,13 @@ router.post("/logout", requireAuth, async (req: AuthRequest, res) => {
 
 /**
  * GET /auth/profile
- * Get user profile
+ * Get user profile with stats
  */
 router.get("/profile", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
 
+    // Get profile
     const { data: profile, error } = await supabase
       .from("profiles")
       .select("*")
@@ -199,9 +200,29 @@ router.get("/profile", requireAuth, async (req: AuthRequest, res) => {
       return res.status(500).json({ error: "Failed to fetch profile" });
     }
 
+    // Calculate stats
+    // Posts count (from experiences table)
+    const { count: postsCount } = await supabase
+      .from("experiences")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    // Followers count (placeholder - will implement later)
+    const followersCount = 0;
+
+    // Following count (placeholder - will implement later)
+    const followingCount = 0;
+
     return res.json({
       success: true,
-      profile,
+      profile: {
+        ...profile,
+        stats: {
+          posts: postsCount || 0,
+          followers: followersCount,
+          following: followingCount,
+        },
+      },
     });
   } catch (error: any) {
     console.error("Unexpected error:", error);
@@ -216,11 +237,39 @@ router.get("/profile", requireAuth, async (req: AuthRequest, res) => {
 router.put("/profile", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { display_name, bio, avatar_url } = req.body;
+    const { username, display_name, bio, location, vehicle_type, avatar_url } = req.body;
+
+    // Check if username is being updated and if it's already taken
+    if (username !== undefined && username !== null && username !== "") {
+      // Check if username is already taken by another user
+      const { data: existingUser, error: checkError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("username", username)
+        .neq("id", userId)
+        .single();
+
+      if (existingUser) {
+        return res.status(400).json({
+          error: "Username is already taken",
+        });
+      }
+
+      // Validate username format (alphanumeric, underscore, hyphen, 3-20 chars)
+      const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+      if (!usernameRegex.test(username)) {
+        return res.status(400).json({
+          error: "Username must be 3-20 characters and contain only letters, numbers, underscores, or hyphens",
+        });
+      }
+    }
 
     const updates: any = {};
+    if (username !== undefined) updates.username = username || null;
     if (display_name !== undefined) updates.display_name = display_name;
     if (bio !== undefined) updates.bio = bio;
+    if (location !== undefined) updates.location = location;
+    if (vehicle_type !== undefined) updates.vehicle_type = vehicle_type;
     if (avatar_url !== undefined) updates.avatar_url = avatar_url;
     updates.updated_at = new Date().toISOString();
 
@@ -233,13 +282,32 @@ router.put("/profile", requireAuth, async (req: AuthRequest, res) => {
 
     if (error) {
       console.error("Error updating profile:", error);
+      
+      // Check if it's a unique constraint violation
+      if (error.code === "23505") {
+        return res.status(400).json({ error: "Username is already taken" });
+      }
+      
       return res.status(500).json({ error: "Failed to update profile" });
     }
+
+    // Get updated stats
+    const { count: postsCount } = await supabase
+      .from("experiences")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
 
     return res.json({
       success: true,
       message: "Profile updated successfully",
-      profile,
+      profile: {
+        ...profile,
+        stats: {
+          posts: postsCount || 0,
+          followers: 0, // Placeholder
+          following: 0, // Placeholder
+        },
+      },
     });
   } catch (error: any) {
     console.error("Unexpected error:", error);
@@ -324,6 +392,109 @@ router.post("/reset-password", async (req, res) => {
     return res.status(500).json({
       error: "Internal server error",
     });
+  }
+});
+
+/**
+ * GET /auth/username/check
+ * Check if username is available
+ */
+router.get("/username/check", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username || typeof username !== "string") {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    // Validate format
+    const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+    if (!usernameRegex.test(username)) {
+      return res.json({
+        available: false,
+        message: "Username must be 3-20 characters and contain only letters, numbers, underscores, or hyphens",
+      });
+    }
+
+    // Check if username exists
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", username)
+      .single();
+
+    if (error && error.code === "PGRST116") {
+      // No rows returned - username is available
+      return res.json({
+        available: true,
+        message: "Username is available",
+      });
+    }
+
+    if (data) {
+      return res.json({
+        available: false,
+        message: "Username is already taken",
+      });
+    }
+
+    return res.json({
+      available: true,
+      message: "Username is available",
+    });
+  } catch (error: any) {
+    console.error("Unexpected error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * GET /auth/profile/:username
+ * Get public profile by username
+ */
+router.get("/profile/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    // Get profile
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, bio, location, vehicle_type, avatar_url, created_at")
+      .eq("username", username)
+      .single();
+
+    if (error || !profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    // Calculate stats
+    const { count: postsCount } = await supabase
+      .from("experiences")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", profile.id);
+
+    // Placeholder stats (will implement later)
+    const followersCount = 0;
+    const followingCount = 0;
+
+    return res.json({
+      success: true,
+      profile: {
+        ...profile,
+        stats: {
+          posts: postsCount || 0,
+          followers: followersCount,
+          following: followingCount,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("Unexpected error:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
