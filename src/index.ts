@@ -13,7 +13,7 @@ const app = express();
 const corsOptions = {
   origin: [
     // 'http://localhost:3000',
-    // 'http://localhost:8080',
+    'http://localhost:8080',
     'https://conceptvella.vercel.app',
     'https://www.conceptvella.com',
   ],
