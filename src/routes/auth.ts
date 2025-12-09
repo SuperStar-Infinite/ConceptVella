@@ -378,6 +378,23 @@ router.put("/profile", requireAuth, async (req: AuthRequest, res) => {
 });
 
 /**
+ * GET /auth/test-reset-link
+ * Test endpoint to verify reset password redirect URL configuration
+ */
+router.get("/test-reset-link", async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'https://www.conceptvella.com';
+  const redirectUrl = `${frontendUrl.replace(/\/$/, '')}/reset-password`;
+
+  return res.json({
+    success: true,
+    frontendUrl,
+    redirectUrl,
+    message: "This is the redirect URL that will be used in password reset emails",
+    note: "Make sure this exact URL is in Supabase Redirect URLs list",
+  });
+});
+
+/**
  * POST /auth/forgot-password
  * Request password reset
  */
@@ -393,7 +410,11 @@ router.post("/forgot-password", async (req, res) => {
   try {
     // Get frontend URL from environment or use production URL
     const frontendUrl = process.env.FRONTEND_URL || 'https://www.conceptvella.com';
-    const redirectUrl = `${frontendUrl}/reset-password`;
+    // Ensure no trailing slash and exact path match
+    const redirectUrl = `${frontendUrl.replace(/\/$/, '')}/reset-password`;
+
+    console.log('Password reset requested for:', email);
+    console.log('Redirect URL:', redirectUrl);
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: redirectUrl,
