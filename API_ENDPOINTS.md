@@ -499,6 +499,118 @@ Authorization: Bearer YOUR_TOKEN
 
 ---
 
+### POST /auth/avatar/upload
+**Description:** Upload avatar image to Supabase Storage and update profile
+
+**Authorization:** Required (Bearer token)
+
+**Content-Type:** `multipart/form-data`
+
+**Request:**
+```
+POST /auth/avatar/upload
+Authorization: Bearer YOUR_TOKEN
+Content-Type: multipart/form-data
+
+Form Data:
+- avatar: [image file] (max 5MB, image files only)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Avatar uploaded successfully",
+  "avatar_url": "https://your-supabase-url.supabase.co/storage/v1/object/public/avatars/user-id/timestamp.jpg",
+  "profile": {
+    "id": "uuid",
+    "avatar_url": "https://...",
+    ...
+  }
+}
+```
+
+**Error (400):**
+```json
+{
+  "error": "No file uploaded. Please provide an image file."
+}
+```
+
+```json
+{
+  "error": "Invalid file type. Only image files are allowed."
+}
+```
+
+**Note:** Make sure the `avatars` bucket exists in Supabase Storage (Storage → Create bucket → name: `avatars` → Public)
+
+---
+
+### POST /auth/avatar/upload-url
+**Description:** Get presigned URL for direct frontend upload (alternative approach)
+
+**Authorization:** Required (Bearer token)
+
+**Request Body:**
+```json
+{
+  "fileName": "avatar.jpg",
+  "contentType": "image/jpeg"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "upload_url": "https://...",
+  "path": "avatars/user-id/timestamp.jpg"
+}
+```
+
+**How it works:**
+1. Frontend calls this endpoint to get upload URL
+2. Frontend uploads file directly to `upload_url` (PUT request)
+3. Frontend calls `POST /auth/avatar/confirm` with the `path` to update profile
+
+---
+
+### POST /auth/avatar/confirm
+**Description:** Confirm avatar upload after frontend uploads directly using presigned URL
+
+**Authorization:** Required (Bearer token)
+
+**Request Body:**
+```json
+{
+  "path": "avatars/user-id/timestamp.jpg"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Avatar updated successfully",
+  "avatar_url": "https://...",
+  "profile": {
+    "id": "uuid",
+    "avatar_url": "https://...",
+    ...
+  }
+}
+```
+
+**Error (400):**
+```json
+{
+  "error": "path is required"
+}
+```
+
+---
+
 ### GET /auth/profile/:username
 **Description:** Get public profile by username
 
@@ -663,6 +775,910 @@ Authorization: Bearer YOUR_TOKEN
   "error": "Challenge is not active"
 }
 ```
+
+---
+
+### GET /challenges/:id
+**Description:** Get single challenge with checkpoints
+
+**Authorization:** None
+
+**Request:**
+```
+GET /challenges/uuid
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "title": "Great Ocean Road Explorer",
+  "description": "Visit 5 iconic locations along the Great Ocean Road",
+  "type": "vella",
+  "difficulty": "moderate",
+  "region_code": "VIC",
+  "status": "active",
+  "starts_at": "2025-01-01T00:00:00Z",
+  "ends_at": "2025-12-31T23:59:59Z",
+  "created_at": "2025-12-07T10:00:00Z",
+  "checkpoints": [
+    {
+      "id": "uuid",
+      "challenge_id": "uuid",
+      "poi_id": "uuid",
+      "requirement_type": "visit",
+      "requirement_value": null,
+      "order_index": 1,
+      "created_at": "2025-12-07T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Challenge not found"
+}
+```
+
+---
+
+### POST /challenges
+**Description:** Create new challenge (admin only)
+
+**Authorization:** Required (Bearer token, admin role)
+
+**Request Body:**
+```json
+{
+  "title": "Great Ocean Road Explorer",
+  "description": "Visit 5 iconic locations along the Great Ocean Road",
+  "type": "vella",                    // "vella" | "smc" | "sponsor"
+  "difficulty": "moderate",            // optional
+  "region_code": "VIC",               // optional
+  "status": "draft",                  // "draft" | "active" | "archived" (default: "draft")
+  "starts_at": "2025-01-01T00:00:00Z", // optional
+  "ends_at": "2025-12-31T23:59:59Z",   // optional
+  "checkpoints": [                     // optional, can add later
+    {
+      "poi_id": "uuid",
+      "requirement_type": "visit",
+      "requirement_value": null,
+      "order_index": 1
+    }
+  ]
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "uuid",
+  "title": "Great Ocean Road Explorer",
+  "description": "Visit 5 iconic locations along the Great Ocean Road",
+  "type": "vella",
+  "difficulty": "moderate",
+  "region_code": "VIC",
+  "status": "draft",
+  "creator_user_id": "uuid",
+  "created_at": "2025-12-07T10:00:00Z",
+  "checkpoints": [...]
+}
+```
+
+**Error (400):**
+```json
+{
+  "error": "Title is required"
+}
+```
+
+```json
+{
+  "error": "Invalid challenge type"
+}
+```
+
+**Error (403):**
+```json
+{
+  "error": "Admin access required"
+}
+```
+
+---
+
+### PUT /challenges/:id
+**Description:** Update challenge (admin only)
+
+**Authorization:** Required (Bearer token, admin role)
+
+**Request Body:**
+```json
+{
+  "title": "Updated Title",           // optional
+  "description": "Updated description", // optional
+  "type": "vella",                    // optional
+  "difficulty": "hard",               // optional
+  "region_code": "SA",                // optional
+  "status": "active",                 // optional
+  "starts_at": "2025-01-01T00:00:00Z", // optional
+  "ends_at": "2025-12-31T23:59:59Z"   // optional
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "title": "Updated Title",
+  "description": "Updated description",
+  "type": "vella",
+  "status": "active",
+  "updated_at": "2025-12-07T11:00:00Z",
+  "checkpoints": [...]
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Challenge not found"
+}
+```
+
+**Error (403):**
+```json
+{
+  "error": "Admin access required"
+}
+```
+
+---
+
+### DELETE /challenges/:id
+**Description:** Delete challenge (admin only)
+
+**Authorization:** Required (Bearer token, admin role)
+
+**Request:**
+```
+DELETE /challenges/uuid
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Challenge deleted successfully"
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Challenge not found"
+}
+```
+
+**Error (403):**
+```json
+{
+  "error": "Admin access required"
+}
+```
+
+**Note:** Deleting a challenge will also delete all associated checkpoints (CASCADE)
+
+---
+
+### GET /challenges/:id/progress
+**Description:** Get current user's progress on a challenge
+
+**Authorization:** Required (Bearer token)
+
+**Request:**
+```
+GET /challenges/uuid/progress
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "challenge_id": "uuid",
+  "user_id": "uuid",
+  "status": "in_progress",
+  "progress_data": {
+    "completed_checkpoints": [1, 2],
+    "current_checkpoint": 3
+  },
+  "started_at": "2025-12-07T10:00:00Z",
+  "completed_at": null,
+  "created_at": "2025-12-07T10:00:00Z",
+  "updated_at": "2025-12-07T10:30:00Z"
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Progress not found. Join the challenge first."
+}
+```
+
+---
+
+### PUT /challenges/:id/progress
+**Description:** Update user's challenge progress
+
+**Authorization:** Required (Bearer token)
+
+**Request Body:**
+```json
+{
+  "status": "completed",              // "not_started" | "in_progress" | "completed"
+  "progress_data": {                  // optional, custom progress tracking
+    "completed_checkpoints": [1, 2, 3],
+    "current_checkpoint": 4
+  }
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "challenge_id": "uuid",
+  "user_id": "uuid",
+  "status": "completed",
+  "progress_data": {
+    "completed_checkpoints": [1, 2, 3]
+  },
+  "started_at": "2025-12-07T10:00:00Z",
+  "completed_at": "2025-12-07T12:00:00Z",
+  "updated_at": "2025-12-07T12:00:00Z"
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Progress not found. Join the challenge first."
+}
+```
+
+**Error (400):**
+```json
+{
+  "error": "Invalid status"
+}
+```
+
+**Note:** Setting status to "completed" automatically sets `completed_at` timestamp
+
+---
+
+### POST /challenges/:id/checkpoints
+**Description:** Add checkpoint to challenge (admin only)
+
+**Authorization:** Required (Bearer token, admin role)
+
+**Request Body:**
+```json
+{
+  "poi_id": "uuid",                  // optional, POI to visit
+  "requirement_type": "visit",       // default: "visit"
+  "requirement_value": null,         // optional, custom requirement data
+  "order_index": 1                   // optional, auto-incremented if not provided
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "uuid",
+  "challenge_id": "uuid",
+  "poi_id": "uuid",
+  "requirement_type": "visit",
+  "requirement_value": null,
+  "order_index": 1,
+  "created_at": "2025-12-07T10:00:00Z"
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Challenge not found"
+}
+```
+
+**Error (403):**
+```json
+{
+  "error": "Admin access required"
+}
+```
+
+---
+
+### PUT /challenges/:id/checkpoints/:checkpointId
+**Description:** Update checkpoint (admin only)
+
+**Authorization:** Required (Bearer token, admin role)
+
+**Request Body:**
+```json
+{
+  "poi_id": "uuid",                  // optional
+  "requirement_type": "visit",        // optional
+  "requirement_value": null,         // optional
+  "order_index": 2                   // optional
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "challenge_id": "uuid",
+  "poi_id": "uuid",
+  "requirement_type": "visit",
+  "requirement_value": null,
+  "order_index": 2,
+  "created_at": "2025-12-07T10:00:00Z"
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Checkpoint not found"
+}
+```
+
+**Error (403):**
+```json
+{
+  "error": "Admin access required"
+}
+```
+
+---
+
+### DELETE /challenges/:id/checkpoints/:checkpointId
+**Description:** Delete checkpoint (admin only)
+
+**Authorization:** Required (Bearer token, admin role)
+
+**Request:**
+```
+DELETE /challenges/uuid/checkpoints/uuid
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Checkpoint deleted successfully"
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "Checkpoint not found"
+}
+```
+
+**Error (403):**
+```json
+{
+  "error": "Admin access required"
+}
+```
+
+---
+
+## 🗺️ Maps & POIs
+
+### GET /map/pois
+**Description:** Search/get POIs with filters
+
+**Authorization:** None (but authenticated users get visit/bookmark status)
+
+**Query Parameters:**
+- `lat`, `lng`: Center point for search (optional)
+- `bbox`: Bounding box as "west,south,east,north" (optional, alternative to lat/lng)
+- `radius`: Search radius in meters (default: 50000 = 50km, only used with lat/lng)
+- `type`: Filter by place type (e.g., "campground", "park")
+- `region`: Filter by region code (e.g., "VIC", "SA", "QLD")
+- `limit`: Max results (default: 100, max: 200)
+- `offset`: Pagination offset (default: 0)
+
+**Request:**
+```
+GET /map/pois
+GET /map/pois?lat=-37.8136&lng=144.9631&radius=10000
+GET /map/pois?bbox=144.5,-38.0,145.0,-37.5
+GET /map/pois?type=campground&region=VIC
+GET /map/pois?lat=-37.8136&lng=144.9631&type=park&limit=50
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "pois": [
+    {
+      "id": "uuid",
+      "google_place_id": "ChIJ...",
+      "name": "Great Ocean Road",
+      "address": "Great Ocean Rd, Victoria, Australia",
+      "lat": -38.6417,
+      "lng": 143.3894,
+      "region_code": "VIC",
+      "place_type": "tourist_attraction",
+      "google_rating": 4.5,
+      "google_user_ratings_total": 1234,
+      "distance": 5234
+    }
+  ],
+  "count": 1
+}
+```
+
+**Note:** If `lat` and `lng` are provided, POIs are sorted by distance. The `distance` field (in meters) is included in the response.
+
+---
+
+### GET /map/pois/:id
+**Description:** Get POI details by ID
+
+**Authorization:** None (but authenticated users get visit/bookmark status)
+
+**Request:**
+```
+GET /map/pois/uuid
+GET /map/pois/uuid
+Authorization: Bearer YOUR_TOKEN  // Optional, adds visit/bookmark status
+```
+
+**Response (200) - Not authenticated:**
+```json
+{
+  "success": true,
+  "poi": {
+    "id": "uuid",
+    "google_place_id": "ChIJ...",
+    "name": "Great Ocean Road",
+    "address": "Great Ocean Rd, Victoria, Australia",
+    "lat": -38.6417,
+    "lng": 143.3894,
+    "region_code": "VIC",
+    "place_type": "tourist_attraction",
+    "google_rating": 4.5,
+    "google_user_ratings_total": 1234,
+    "source": "google",
+    "is_active": true,
+    "created_at": "2025-12-07T10:00:00Z"
+  }
+}
+```
+
+**Response (200) - Authenticated:**
+```json
+{
+  "success": true,
+  "poi": {
+    "id": "uuid",
+    "name": "Great Ocean Road",
+    ...,
+    "visited": {
+      "id": "uuid",
+      "visited_at": "2025-12-07T10:00:00Z",
+      "note": "Amazing views!"
+    },
+    "bookmarked": {
+      "id": "uuid",
+      "created_at": "2025-12-07T10:00:00Z"
+    }
+  }
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "POI not found"
+}
+```
+
+---
+
+### POST /map/pois/:id/visited
+**Description:** Mark POI as visited
+
+**Authorization:** Required (Bearer token)
+
+**Request Body:**
+```json
+{
+  "note": "Amazing views! Worth the drive.",  // optional
+  "visited_at": "2025-12-07T10:00:00Z"       // optional, defaults to now
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "POI marked as visited",
+  "visit": {
+    "id": "uuid",
+    "user_id": "uuid",
+    "poi_id": "uuid",
+    "visited_at": "2025-12-07T10:00:00Z",
+    "note": "Amazing views! Worth the drive.",
+    "created_at": "2025-12-07T10:00:00Z"
+  }
+}
+```
+
+**Response (200) - If already visited (updates existing):**
+```json
+{
+  "success": true,
+  "message": "Visit updated",
+  "visit": {...}
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "POI not found"
+}
+```
+
+---
+
+### DELETE /map/pois/:id/visited
+**Description:** Remove visit record
+
+**Authorization:** Required (Bearer token)
+
+**Request:**
+```
+DELETE /map/pois/uuid/visited
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Visit removed"
+}
+```
+
+---
+
+### GET /map/pois/visited
+**Description:** Get user's visited POIs (for Journey view)
+
+**Authorization:** Required (Bearer token)
+
+**Query Parameters:**
+- `limit`: Max results (default: 50, max: 100)
+- `offset`: Pagination offset (default: 0)
+
+**Request:**
+```
+GET /map/pois/visited
+Authorization: Bearer YOUR_TOKEN
+GET /map/pois/visited?limit=100&offset=0
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "visits": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "poi_id": "uuid",
+      "visited_at": "2025-12-07T10:00:00Z",
+      "note": "Amazing views!",
+      "created_at": "2025-12-07T10:00:00Z",
+      "pois": {
+        "id": "uuid",
+        "name": "Great Ocean Road",
+        "lat": -38.6417,
+        "lng": 143.3894,
+        "address": "Great Ocean Rd, Victoria, Australia",
+        ...
+      }
+    }
+  ],
+  "count": 1
+}
+```
+
+**Note:** Visits are ordered by `visited_at` descending (most recent first)
+
+---
+
+### POST /map/pois/:id/bookmark
+**Description:** Bookmark a POI
+
+**Authorization:** Required (Bearer token)
+
+**Request:**
+```
+POST /map/pois/uuid/bookmark
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "POI bookmarked",
+  "bookmark": {
+    "id": "uuid",
+    "user_id": "uuid",
+    "poi_id": "uuid",
+    "created_at": "2025-12-07T10:00:00Z"
+  }
+}
+```
+
+**Response (200) - If already bookmarked:**
+```json
+{
+  "success": true,
+  "message": "Already bookmarked",
+  "bookmark": {...}
+}
+```
+
+**Error (404):**
+```json
+{
+  "error": "POI not found"
+}
+```
+
+---
+
+### DELETE /map/pois/:id/bookmark
+**Description:** Remove bookmark
+
+**Authorization:** Required (Bearer token)
+
+**Request:**
+```
+DELETE /map/pois/uuid/bookmark
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Bookmark removed"
+}
+```
+
+---
+
+### GET /map/pois/bookmarked
+**Description:** Get user's bookmarked POIs
+
+**Authorization:** Required (Bearer token)
+
+**Query Parameters:**
+- `limit`: Max results (default: 50, max: 100)
+- `offset`: Pagination offset (default: 0)
+
+**Request:**
+```
+GET /map/pois/bookmarked
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "bookmarks": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "poi_id": "uuid",
+      "created_at": "2025-12-07T10:00:00Z",
+      "pois": {
+        "id": "uuid",
+        "name": "Great Ocean Road",
+        "lat": -38.6417,
+        "lng": 143.3894,
+        ...
+      }
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+## 🗺️ Journey
+
+### GET /journey/visited
+**Description:** Get user's visited POIs for Journey view (with POI details)
+
+**Authorization:** Required (Bearer token)
+
+**Query Parameters:**
+- `limit`: Max results (default: 100, max: 200)
+- `offset`: Pagination offset (default: 0)
+
+**Request:**
+```
+GET /journey/visited
+Authorization: Bearer YOUR_TOKEN
+GET /journey/visited?limit=50&offset=0
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "visits": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "poi_id": "uuid",
+      "visited_at": "2025-12-07T10:00:00Z",
+      "note": "Amazing views!",
+      "created_at": "2025-12-07T10:00:00Z",
+      "pois": {
+        "id": "uuid",
+        "name": "Great Ocean Road",
+        "address": "Great Ocean Rd, Victoria, Australia",
+        "lat": -38.6417,
+        "lng": 143.3894,
+        "region_code": "VIC",
+        "place_type": "tourist_attraction",
+        ...
+      }
+    }
+  ],
+  "count": 1
+}
+```
+
+**Note:** Visits are ordered by `visited_at` descending (most recent first)
+
+---
+
+### GET /journey/stats
+**Description:** Get journey statistics for user
+
+**Authorization:** Required (Bearer token)
+
+**Request:**
+```
+GET /journey/stats
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "stats": {
+    "total_visits": 25,
+    "unique_pois_visited": 20,
+    "regions_visited": ["VIC", "SA", "QLD"],
+    "regions_count": 3,
+    "types_visited": ["campground", "park", "tourist_attraction"],
+    "types_count": 3,
+    "first_visit": "2025-01-15T10:00:00Z",
+    "last_visit": "2025-12-07T10:00:00Z"
+  }
+}
+```
+
+---
+
+### GET /journey/timeline
+**Description:** Get journey timeline (visits grouped by date)
+
+**Authorization:** Required (Bearer token)
+
+**Query Parameters:**
+- `limit`: Max results (default: 50, max: 100)
+- `offset`: Pagination offset (default: 0)
+
+**Request:**
+```
+GET /journey/timeline
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "timeline": [
+    {
+      "date": "2025-12-07",
+      "visits": [
+        {
+          "id": "uuid",
+          "visited_at": "2025-12-07T10:00:00Z",
+          "note": "Amazing views!",
+          "pois": {...}
+        }
+      ],
+      "count": 1
+    },
+    {
+      "date": "2025-12-06",
+      "visits": [...],
+      "count": 3
+    }
+  ],
+  "count": 2
+}
+```
+
+**Note:** Timeline is sorted by date descending (most recent first)
+
+---
+
+### GET /journey/regions
+**Description:** Get journey breakdown by region
+
+**Authorization:** Required (Bearer token)
+
+**Request:**
+```
+GET /journey/regions
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "regions": [
+    {
+      "region_code": "VIC",
+      "count": 15
+    },
+    {
+      "region_code": "SA",
+      "count": 8
+    },
+    {
+      "region_code": "QLD",
+      "count": 2
+    }
+  ],
+  "total_regions": 3
+}
+```
+
+**Note:** Regions are sorted by visit count descending (most visited first)
 
 ---
 

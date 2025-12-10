@@ -32,12 +32,32 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/routes/auth.ts
 const express_1 = require("express");
+const multer_1 = __importDefault(require("multer"));
 const supabase_1 = require("../supabase");
 const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
+// Configure multer for memory storage (we'll upload directly to Supabase)
+const upload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept only image files
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        }
+        else {
+            cb(new Error('Only image files are allowed'));
+        }
+    },
+});
 /**
  * POST /auth/login
  * Login with email and password to get access token
@@ -746,6 +766,185 @@ router.post("/oauth/callback", async (req, res) => {
     }
     catch (error) {
         console.error("Unexpected OAuth callback error:", error);
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+});
+/**
+ * POST /auth/avatar/upload
+ * Upload avatar image to Supabase Storage and update profile
+ *
+ * Accepts multipart/form-data with 'avatar' field
+ */
+router.post("/avatar/upload", auth_1.requireAuth, upload.single('avatar'), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({
+                error: "No file uploaded. Please provide an image file.",
+            });
+        }
+        // Validate file type
+        if (!file.mimetype.startsWith('image/')) {
+            return res.status(400).json({
+                error: "Invalid file type. Only image files are allowed.",
+            });
+        }
+        // Generate unique filename
+        const fileExt = file.originalname.split('.').pop();
+        const fileName = `${userId}/${Date.now()}.${fileExt}`;
+        const filePath = `avatars/${fileName}`;
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase_1.supabase.storage
+            .from('avatars') // Make sure this bucket exists in Supabase
+            .upload(filePath, file.buffer, {
+            contentType: file.mimetype,
+            upsert: true, // Replace if exists
+        });
+        if (uploadError) {
+            console.error("Storage upload error:", uploadError);
+            return res.status(500).json({
+                error: "Failed to upload avatar",
+            });
+        }
+        // Get public URL
+        const { data: urlData } = supabase_1.supabase.storage
+            .from('avatars')
+            .getPublicUrl(filePath);
+        const avatarUrl = urlData.publicUrl;
+        // Update profile with new avatar URL
+        const { data: profile, error: updateError } = await supabase_1.supabase
+            .from("profiles")
+            .update({
+            avatar_url: avatarUrl,
+            updated_at: new Date().toISOString(),
+        })
+            .eq("id", userId)
+            .select()
+            .single();
+        if (updateError) {
+            console.error("Profile update error:", updateError);
+            return res.status(500).json({
+                error: "Failed to update profile",
+            });
+        }
+        return res.json({
+            success: true,
+            message: "Avatar uploaded successfully",
+            avatar_url: avatarUrl,
+            profile,
+        });
+    }
+    catch (error) {
+        console.error("Unexpected avatar upload error:", error);
+        if (error.message === 'Only image files are allowed') {
+            return res.status(400).json({ error: error.message });
+        }
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+});
+/**
+ * POST /auth/avatar/upload-url
+ * Get presigned URL for direct frontend upload (alternative approach)
+ *
+ * Frontend can use this URL to upload directly to Supabase Storage
+ * without going through the backend
+ */
+router.post("/avatar/upload-url", auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { fileName, contentType } = req.body;
+        if (!fileName || !contentType) {
+            return res.status(400).json({
+                error: "fileName and contentType are required",
+            });
+        }
+        // Validate content type
+        if (!contentType.startsWith('image/')) {
+            return res.status(400).json({
+                error: "Invalid content type. Only image files are allowed.",
+            });
+        }
+        // Generate unique filename
+        const fileExt = fileName.split('.').pop() || 'jpg';
+        const uniqueFileName = `${userId}/${Date.now()}.${fileExt}`;
+        const filePath = `avatars/${uniqueFileName}`;
+        // Create signed URL for upload (valid for 1 hour)
+        const { data: signedUrlData, error: signedUrlError } = await supabase_1.supabase.storage
+            .from('avatars')
+            .createSignedUploadUrl(filePath, {
+            upsert: true,
+        });
+        if (signedUrlError) {
+            console.error("Signed URL error:", signedUrlError);
+            return res.status(500).json({
+                error: "Failed to generate upload URL",
+            });
+        }
+        return res.json({
+            success: true,
+            upload_url: signedUrlData.signedUrl,
+            path: filePath,
+            // Frontend should upload to this URL, then call PUT /auth/profile with avatar_url
+            // Or use POST /auth/avatar/confirm to update profile
+        });
+    }
+    catch (error) {
+        console.error("Unexpected upload URL error:", error);
+        return res.status(500).json({
+            error: "Internal server error",
+        });
+    }
+});
+/**
+ * POST /auth/avatar/confirm
+ * Confirm avatar upload after frontend uploads directly using presigned URL
+ *
+ * Frontend uploads to presigned URL, then calls this to update profile
+ */
+router.post("/avatar/confirm", auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { path } = req.body;
+        if (!path) {
+            return res.status(400).json({
+                error: "path is required",
+            });
+        }
+        // Get public URL
+        const { data: urlData } = supabase_1.supabase.storage
+            .from('avatars')
+            .getPublicUrl(path);
+        const avatarUrl = urlData.publicUrl;
+        // Update profile
+        const { data: profile, error: updateError } = await supabase_1.supabase
+            .from("profiles")
+            .update({
+            avatar_url: avatarUrl,
+            updated_at: new Date().toISOString(),
+        })
+            .eq("id", userId)
+            .select()
+            .single();
+        if (updateError) {
+            console.error("Profile update error:", updateError);
+            return res.status(500).json({
+                error: "Failed to update profile",
+            });
+        }
+        return res.json({
+            success: true,
+            message: "Avatar updated successfully",
+            avatar_url: avatarUrl,
+            profile,
+        });
+    }
+    catch (error) {
+        console.error("Unexpected avatar confirm error:", error);
         return res.status(500).json({
             error: "Internal server error",
         });

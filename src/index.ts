@@ -6,6 +6,8 @@ import healthRouter from "./routes/health";
 import challengesRouter from "./routes/challenges";
 import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
+import mapRouter from "./routes/map";
+import journeyRouter from "./routes/journey";
 
 const app = express();
 
@@ -28,6 +30,8 @@ app.use("/health", healthRouter);
 app.use("/auth", authRouter);
 app.use("/challenges", challengesRouter);
 app.use("/admin", adminRouter);
+app.use("/map", mapRouter);
+app.use("/journey", journeyRouter);
 
 const PORT = process.env.PORT || 4000;
 
