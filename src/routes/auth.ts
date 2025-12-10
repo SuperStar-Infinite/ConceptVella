@@ -653,5 +653,153 @@ router.post("/verify-code", async (req, res) => {
   }
 });
 
+/**
+ * GET /auth/oauth/:provider
+ * Get OAuth URL for Google or Apple sign-in
+ * 
+ * Flow:
+ * 1. Frontend calls this endpoint to get OAuth URL
+ * 2. Frontend redirects user to the returned URL
+ * 3. User authenticates with provider
+ * 4. Provider redirects to frontend with tokens in URL hash
+ * 5. Frontend extracts tokens and uses them
+ */
+router.get("/oauth/:provider", async (req, res) => {
+  const { provider } = req.params;
+  const { redirectTo } = req.query;
+
+  // Validate provider
+  if (provider !== "google" && provider !== "apple") {
+    return res.status(400).json({
+      error: "Invalid provider. Supported providers: google, apple",
+    });
+  }
+
+  try {
+    // Get frontend URL from environment or query param
+    const frontendUrl = (redirectTo as string) || process.env.FRONTEND_URL || 'https://www.conceptvella.com';
+    // Remove trailing slash and ensure proper callback path
+    const redirectUrl = `${frontendUrl.replace(/\/$/, '')}/auth/callback`;
+
+    // Generate OAuth URL using Supabase
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: provider as "google" | "apple",
+      options: {
+        redirectTo: redirectUrl,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    });
+
+    if (error) {
+      console.error("OAuth URL generation error:", error);
+      return res.status(500).json({
+        error: "Failed to generate OAuth URL",
+      });
+    }
+
+    if (!data.url) {
+      return res.status(500).json({
+        error: "Failed to generate OAuth URL",
+      });
+    }
+
+    return res.json({
+      success: true,
+      url: data.url,
+      provider,
+      redirectTo: redirectUrl,
+    });
+  } catch (error: any) {
+    console.error("Unexpected OAuth error:", error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
+/**
+ * POST /auth/oauth/callback
+ * Handle OAuth callback and exchange code for tokens
+ * 
+ * This endpoint can be used if you want to handle the OAuth callback on the backend
+ * instead of directly on the frontend. The frontend would redirect to this endpoint
+ * after OAuth authentication.
+ * 
+ * Note: Supabase typically handles OAuth callbacks directly and redirects to frontend
+ * with tokens in the URL hash. This endpoint is optional and provides an alternative
+ * server-side handling approach.
+ */
+router.post("/oauth/callback", async (req, res) => {
+  const { code, provider } = req.body;
+
+  if (!code || !provider) {
+    return res.status(400).json({
+      error: "Code and provider are required",
+    });
+  }
+
+  if (provider !== "google" && provider !== "apple") {
+    return res.status(400).json({
+      error: "Invalid provider. Supported providers: google, apple",
+    });
+  }
+
+  try {
+    // Exchange code for session
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      console.error("OAuth callback error:", error);
+      return res.status(400).json({
+        error: "Invalid or expired authorization code",
+      });
+    }
+
+    if (!data.user || !data.session) {
+      return res.status(400).json({
+        error: "Failed to create session",
+      });
+    }
+
+    // Get or create user profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, display_name")
+      .eq("id", data.user.id)
+      .single();
+
+    // If profile doesn't exist, create it (should be auto-created by trigger, but just in case)
+    if (!profile) {
+      await supabase.from("profiles").insert({
+        id: data.user.id,
+        display_name: data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "User",
+        avatar_url: data.user.user_metadata?.avatar_url || null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "OAuth authentication successful",
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        role: profile?.role || "user",
+        display_name: profile?.display_name || data.user.user_metadata?.full_name,
+      },
+      token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
+    });
+  } catch (error: any) {
+    console.error("Unexpected OAuth callback error:", error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
 export default router;
 

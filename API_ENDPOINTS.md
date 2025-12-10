@@ -164,6 +164,122 @@ GET /health
 
 ---
 
+### GET /auth/oauth/:provider
+**Description:** Get OAuth URL for Google or Apple sign-in
+
+**Authorization:** None
+
+**Path Parameters:**
+- `provider` (string) - Either `google` or `apple`
+
+**Query Parameters (optional):**
+- `redirectTo` (string) - Custom frontend URL for OAuth callback (defaults to `FRONTEND_URL` env var)
+
+**Request:**
+```
+GET /auth/oauth/google
+GET /auth/oauth/apple
+GET /auth/oauth/google?redirectTo=https://custom-frontend.com
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "url": "https://oadmvwnpytdxzrclkqti.supabase.co/auth/v1/authorize?provider=google&...",
+  "provider": "google",
+  "redirectTo": "https://www.conceptvella.com/auth/callback"
+}
+```
+
+**Error (400):**
+```json
+{
+  "error": "Invalid provider. Supported providers: google, apple"
+}
+```
+
+**How it works:**
+1. Frontend calls this endpoint to get the OAuth URL
+2. Frontend redirects user to the returned `url`
+3. User authenticates with Google/Apple
+4. Provider redirects to Supabase
+5. Supabase redirects to frontend (`redirectTo`) with tokens in URL hash: `#access_token=...&refresh_token=...`
+6. Frontend extracts tokens from `window.location.hash` and uses them
+
+**Frontend Example:**
+```javascript
+// Get OAuth URL
+const response = await fetch('https://your-backend-url.com/auth/oauth/google');
+const { url } = await response.json();
+
+// Redirect user to OAuth provider
+window.location.href = url;
+
+// After redirect, extract tokens from URL hash
+const hash = window.location.hash.substring(1);
+const params = new URLSearchParams(hash);
+const accessToken = params.get('access_token');
+const refreshToken = params.get('refresh_token');
+
+// Use tokens to authenticate user
+// You can call POST /auth/oauth/callback or use tokens directly
+```
+
+**Important:** 
+- The `redirectTo` URL must be in Supabase's Redirect URLs list (Authentication → URL Configuration)
+- Default redirect URL: `https://www.conceptvella.com/auth/callback`
+- Tokens are returned in the URL hash (`#access_token=...`), not query params
+
+---
+
+### POST /auth/oauth/callback
+**Description:** Exchange OAuth authorization code for session tokens (optional server-side handling)
+
+**Authorization:** None
+
+**Note:** This endpoint is optional. Supabase typically redirects directly to the frontend with tokens in the URL hash. Use this endpoint only if you want to handle the OAuth callback server-side.
+
+**Request Body:**
+```json
+{
+  "code": "authorization_code_from_oauth_provider",
+  "provider": "google"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "OAuth authentication successful",
+  "user": {
+    "id": "uuid",
+    "email": "user@gmail.com",
+    "role": "user",
+    "display_name": "John Doe"
+  },
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "hirn5g33x6gf",
+  "expires_at": 1765296928
+}
+```
+
+**Error (400):**
+```json
+{
+  "error": "Code and provider are required"
+}
+```
+
+```json
+{
+  "error": "Invalid or expired authorization code"
+}
+```
+
+---
+
 ### POST /auth/logout
 **Description:** Logout user (invalidate session)
 
@@ -745,7 +861,18 @@ Or for success responses:
 
 ## 📝 Notes
 
-1. **CORS:** Enabled for:
+1. **OAuth Setup (Google & Apple):**
+   - **Supabase Configuration Required:** Before using OAuth, you must configure Google and Apple providers in Supabase Dashboard:
+     - Go to Authentication → Providers
+     - Enable Google OAuth and configure with your Google OAuth credentials
+     - Enable Apple OAuth and configure with your Apple OAuth credentials
+   - **Redirect URLs:** Add these URLs to Supabase's Redirect URLs list (Authentication → URL Configuration):
+     - `https://www.conceptvella.com/auth/callback`
+     - `https://conceptvella.vercel.app/auth/callback`
+     - `http://localhost:8080/auth/callback` (for development)
+   - **OAuth Flow:** User authenticates → Supabase redirects to frontend with tokens in URL hash → Frontend extracts tokens
+
+2. **CORS:** Enabled for:
    - `http://localhost:8080`
    - `https://conceptvella.vercel.app`
    - `https://www.conceptvella.com`
