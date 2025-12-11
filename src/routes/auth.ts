@@ -22,7 +22,25 @@ const upload = multer({
   },
 });
 
-/**
+/**@103346056741054 
+
+still error
+
+Request URL
+https://conceptvella.onrender.com/auth/avatar/upload
+Request Method
+POST
+Status Code
+500 Internal Server Error
+Remote Address
+216.24.57.7:443
+Referrer Policy
+strict-origin-when-cross-origin
+
+{
+    "error": "Failed to upload avatar",
+    "details": "new row violates row-level security policy"
+}
  * POST /auth/login
  * Login with email and password to get access token
  */
@@ -935,9 +953,11 @@ router.post("/avatar/upload-url", requireAuth, async (req: AuthRequest, res) => 
     // Generate unique filename
     const fileExt = fileName.split('.').pop() || 'jpg';
     const uniqueFileName = `${userId}/${Date.now()}.${fileExt}`;
-    const filePath = `avatars/${uniqueFileName}`;
+    // File path should NOT include 'avatars/' prefix since we're already in the 'avatars' bucket
+    const filePath = uniqueFileName;
 
     // Create signed URL for upload (valid for 1 hour)
+    // This uses the user's JWT token, not service role, so it works with storage policies
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('avatars')
       .createSignedUploadUrl(filePath, {
