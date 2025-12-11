@@ -843,9 +843,10 @@ router.post("/avatar/upload", requireAuth, upload.single('avatar'), async (req: 
     }
 
     // Generate unique filename
-    const fileExt = file.originalname.split('.').pop();
+    const fileExt = file.originalname.split('.').pop() || 'jpg';
     const fileName = `${userId}/${Date.now()}.${fileExt}`;
-    const filePath = `avatars/${fileName}`;
+    // File path should NOT include 'avatars/' prefix since we're already in the 'avatars' bucket
+    const filePath = fileName;
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -857,8 +858,10 @@ router.post("/avatar/upload", requireAuth, upload.single('avatar'), async (req: 
 
     if (uploadError) {
       console.error("Storage upload error:", uploadError);
+      console.error("Upload error details:", JSON.stringify(uploadError, null, 2));
       return res.status(500).json({
         error: "Failed to upload avatar",
+        details: uploadError.message || "Storage bucket may not exist or permissions may be incorrect",
       });
     }
 
