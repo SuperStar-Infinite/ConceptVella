@@ -134,13 +134,17 @@ router.get("/:id", async (req, res) => {
 
 /**
  * POST /challenges
- * Create new challenge (admin only)
+ * Create new challenge
+ * 
+ * - Users can create SMC (Self-Made Challenges) - type: "smc"
+ * - Admins can create Vella challenges - type: "vella"
+ * - Admins/Sponsors can create Sponsor challenges - type: "sponsor"
  */
-router.post("/", requireAdmin, async (req: AuthRequest, res) => {
+router.post("/", requireAuth, async (req: AuthRequest, res) => {
   const {
     title,
     description,
-    type = "vella",
+    type = "smc", // Default to SMC for regular users
     difficulty,
     region_code,
     status = "draft",
@@ -149,6 +153,9 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
     checkpoints = [],
   } = req.body;
 
+  const userId = req.user!.id;
+  const userRole = req.user!.role;
+
   if (!title) {
     return res.status(400).json({ error: "Title is required" });
   }
@@ -156,6 +163,29 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
   // Validate type
   if (!["vella", "smc", "sponsor"].includes(type)) {
     return res.status(400).json({ error: "Invalid challenge type" });
+  }
+
+  // Permission checks:
+  // - Regular users can only create SMC challenges
+  // - Admins can create any type
+  // - Sponsors can create sponsor challenges (future: add sponsor role check)
+  if (type === "vella" && userRole !== "admin") {
+    return res.status(403).json({ 
+      error: "Only admins can create Vella challenges" 
+    });
+  }
+
+  if (type === "sponsor" && userRole !== "admin" && userRole !== "sponsor") {
+    return res.status(403).json({ 
+      error: "Only admins or sponsors can create sponsor challenges" 
+    });
+  }
+
+  // Regular users can only create SMC challenges with status "draft"
+  if (type === "smc" && userRole === "user" && status !== "draft") {
+    return res.status(403).json({ 
+      error: "Users can only create SMC challenges with status 'draft'" 
+    });
   }
 
   // Validate status
@@ -176,7 +206,7 @@ router.post("/", requireAdmin, async (req: AuthRequest, res) => {
         status,
         starts_at,
         ends_at,
-        creator_user_id: req.user!.id,
+        creator_user_id: userId, // Always set creator
       })
       .select()
       .single();

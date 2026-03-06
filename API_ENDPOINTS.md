@@ -825,19 +825,24 @@ GET /challenges/uuid
 ---
 
 ### POST /challenges
-**Description:** Create new challenge (admin only)
+**Description:** Create new challenge
 
-**Authorization:** Required (Bearer token, admin role)
+**Authorization:** Required (Bearer token)
+
+**Permission Rules:**
+- **Regular users** can create SMC (Self-Made Challenges) with type `"smc"` and status `"draft"` only
+- **Admins** can create any challenge type (`"vella"`, `"smc"`, `"sponsor"`) with any status
+- **Sponsors** can create sponsor challenges with type `"sponsor"`
 
 **Request Body:**
 ```json
 {
   "title": "Great Ocean Road Explorer",
   "description": "Visit 5 iconic locations along the Great Ocean Road",
-  "type": "vella",                    // "vella" | "smc" | "sponsor"
+  "type": "smc",                       // "vella" (admin only) | "smc" (users can create) | "sponsor" (admin/sponsor only)
   "difficulty": "moderate",            // optional
   "region_code": "VIC",               // optional
-  "status": "draft",                  // "draft" | "active" | "archived" (default: "draft")
+  "status": "draft",                  // "draft" | "active" | "archived" (default: "draft", users can only use "draft")
   "starts_at": "2025-01-01T00:00:00Z", // optional
   "ends_at": "2025-12-31T23:59:59Z",   // optional
   "checkpoints": [                     // optional, can add later
@@ -857,13 +862,25 @@ GET /challenges/uuid
   "id": "uuid",
   "title": "Great Ocean Road Explorer",
   "description": "Visit 5 iconic locations along the Great Ocean Road",
-  "type": "vella",
+  "type": "smc",
+  "creator_user_id": "uuid",
   "difficulty": "moderate",
   "region_code": "VIC",
   "status": "draft",
-  "creator_user_id": "uuid",
+  "starts_at": "2025-01-01T00:00:00Z",
+  "ends_at": "2025-12-31T23:59:59Z",
   "created_at": "2025-12-07T10:00:00Z",
-  "checkpoints": [...]
+  "checkpoints": [
+    {
+      "id": "uuid",
+      "challenge_id": "uuid",
+      "poi_id": "uuid",
+      "requirement_type": "visit",
+      "requirement_value": null,
+      "order_index": 1,
+      "created_at": "2025-12-07T10:00:00Z"
+    }
+  ]
 }
 ```
 
@@ -874,16 +891,31 @@ GET /challenges/uuid
 }
 ```
 
+**Error (400):**
 ```json
 {
   "error": "Invalid challenge type"
 }
 ```
 
-**Error (403):**
+**Error (403) - User trying to create Vella challenge:**
 ```json
 {
-  "error": "Admin access required"
+  "error": "Only admins can create Vella challenges"
+}
+```
+
+**Error (403) - User trying to create Sponsor challenge:**
+```json
+{
+  "error": "Only admins or sponsors can create sponsor challenges"
+}
+```
+
+**Error (403) - User trying to set status other than draft:**
+```json
+{
+  "error": "Users can only create SMC challenges with status 'draft'"
 }
 ```
 
